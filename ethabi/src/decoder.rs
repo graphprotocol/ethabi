@@ -8,28 +8,23 @@
 
 //! ABI decoder.
 
-use crate::util::slice_data;
 use crate::{Word, Token, Error, ParamType};
 
+#[derive(Debug)]
 struct DecodeResult {
 	token: Token,
 	new_offset: usize,
 }
 
-struct BytesTaken {
-	bytes: Vec<u8>,
-	new_offset: usize,
-}
-
-fn as_u32(slice: &Word) -> Result<u32, Error> {
+fn as_usize(slice: &Word) -> Result<usize, Error> {
 	if !slice[..28].iter().all(|x| *x == 0) {
 		return Err(Error::InvalidData);
 	}
 
-	let result = ((slice[28] as u32) << 24) +
-		((slice[29] as u32) << 16) +
-		((slice[30] as u32) << 8) +
-		(slice[31] as u32);
+	let result = ((slice[28] as usize) << 24)
+		+ ((slice[29] as usize) << 16)
+		+ ((slice[30] as usize) << 8)
+		+ (slice[31] as usize);
 
 	Ok(result)
 }
@@ -46,184 +41,159 @@ fn as_bool(slice: &Word) -> Result<bool, Error> {
 pub fn decode(types: &[ParamType], data: &[u8]) -> Result<Vec<Token>, Error> {
 	let is_empty_bytes_valid_encoding = types.iter().all(|t| t.is_empty_bytes_valid_encoding());
 	if !is_empty_bytes_valid_encoding && data.is_empty() {
-		return Err(Error::InvalidName("please ensure the contract and method you're calling exist! failed to decode empty bytes. if you're using jsonrpc this is likely due to jsonrpc returning `0x` in case contract or method don't exist".into()));
+		return Err(Error::InvalidName(
+			"please ensure the contract and method you're calling exist! \
+			failed to decode empty bytes. if you're using jsonrpc this is \
+			likely due to jsonrpc returning `0x` in case contract or method \
+			don't exist".into())
+		);
 	}
-	let slices = slice_data(data)?;
-	let mut tokens = Vec::with_capacity(types.len());
+
+	let mut tokens = vec![];
 	let mut offset = 0;
+
 	for param in types {
-		let res = decode_param(param, &slices, offset)?;
+		let res = decode_param(param, data, offset)?;
 		offset = res.new_offset;
 		tokens.push(res.token);
 	}
+
 	Ok(tokens)
 }
 
-fn peek(slices: &[Word], position: usize) -> Result<&Word, Error> {
-	slices.get(position).ok_or_else(|| Error::InvalidData)
-}
-
-fn take_bytes(slices: &[Word], position: usize, len: usize) -> Result<BytesTaken, Error> {
-	let slices_len = (len + 31) / 32;
-
-	let mut bytes_slices = Vec::with_capacity(slices_len);
-	for i in 0..slices_len {
-		let slice = peek(slices, position + i)?;
-		bytes_slices.push(slice);
+fn peek(data: &[u8], offset: usize, len: usize) -> Result<&[u8], Error> {
+	if offset + len > data.len() {
+		return Err(Error::InvalidData);
+	} else {
+		Ok(&data[offset..(offset + len)])
 	}
-
-	let bytes = bytes_slices.into_iter()
-		.flat_map(|slice| slice.to_vec())
-		.take(len)
-		.collect();
-
-	let taken = BytesTaken {
-		bytes,
-		new_offset: position + slices_len,
-	};
-
-	Ok(taken)
 }
 
-fn decode_param(param: &ParamType, slices: &[Word], offset: usize) -> Result<DecodeResult, Error> {
+fn peek_32_bytes(data: &[u8], offset: usize) -> Result<Word, Error> {
+	peek(data, offset, 32).map(|x| {
+		let mut out: Word = [0u8; 32];
+		out.copy_from_slice(&x[0..32]);
+		out
+	})
+}
+
+fn take_bytes(data: &[u8], offset: usize, len: usize) -> Result<Vec<u8>, Error> {
+	if offset + len > data.len() {
+		return Err(Error::InvalidData);
+	} else {
+		Ok((&data[offset..(offset + len)]).to_vec())
+	}
+}
+
+fn decode_param(param: &ParamType, data: &[u8], offset: usize) -> Result<DecodeResult, Error> {
 	match *param {
 		ParamType::Address => {
-			let slice = peek(slices, offset)?;
+			let slice = peek_32_bytes(data, offset)?;
 			let mut address = [0u8; 20];
 			address.copy_from_slice(&slice[12..]);
-
 			let result = DecodeResult {
 				token: Token::Address(address.into()),
-				new_offset: offset + 1,
+				new_offset: offset + 32,
 			};
-
 			Ok(result)
-		},
+		}
 		ParamType::Int(_) => {
-			let slice = peek(slices, offset)?;
-
+			let slice = peek_32_bytes(data, offset)?;
 			let result = DecodeResult {
 				token: Token::Int(slice.clone().into()),
-				new_offset: offset + 1,
+				new_offset: offset + 32,
 			};
-
 			Ok(result)
-		},
+		}
 		ParamType::Uint(_) => {
-			let slice = peek(slices, offset)?;
-
+			let slice = peek_32_bytes(data, offset)?;
 			let result = DecodeResult {
 				token: Token::Uint(slice.clone().into()),
-				new_offset: offset + 1,
+				new_offset: offset + 32,
 			};
-
 			Ok(result)
-		},
+		}
 		ParamType::Bool => {
-			let slice = peek(slices, offset)?;
-
-			let b = as_bool(slice)?;
-
+			let b = as_bool(&peek_32_bytes(data, offset)?)?;
 			let result = DecodeResult {
 				token: Token::Bool(b),
-				new_offset: offset + 1,
+				new_offset: offset + 32,
 			};
-
 			Ok(result)
-		},
+		}
 		ParamType::FixedBytes(len) => {
-			let taken = take_bytes(slices, offset, len)?;
-
+			// FixedBytes is anything from bytes1 to bytes32. These values
+			// are padded with trailing zeros to fill 32 bytes.
+			let bytes = take_bytes(data, offset, len)?;
 			let result = DecodeResult {
-				token: Token::FixedBytes(taken.bytes),
-				new_offset: taken.new_offset,
+				token: Token::FixedBytes(bytes),
+				new_offset: offset + 32,
 			};
-
 			Ok(result)
-		},
+		}
 		ParamType::Bytes => {
-			let offset_slice = peek(slices, offset)?;
-			let len_offset = (as_u32(offset_slice)? / 32) as usize;
-
-			let len_slice = peek(slices, len_offset)?;
-			let len = as_u32(len_slice)? as usize;
-
-			let taken = take_bytes(slices, len_offset + 1, len)?;
-
+			let dynamic_offset = as_usize(&peek_32_bytes(data, offset)?)?;
+			let len = as_usize(&peek_32_bytes(data, dynamic_offset)?)?;
+			let bytes = take_bytes(data, dynamic_offset + 32, len)?;
 			let result = DecodeResult {
-				token: Token::Bytes(taken.bytes),
-				new_offset: offset + 1,
+				token: Token::Bytes(bytes),
+				new_offset: offset + 32,
 			};
-
 			Ok(result)
-		},
+		}
 		ParamType::String => {
-			let offset_slice = peek(slices, offset)?;
-			let len_offset = (as_u32(offset_slice)? / 32) as usize;
-
-			let len_slice = peek(slices, len_offset)?;
-			let len = as_u32(len_slice)? as usize;
-
-			let taken = take_bytes(slices, len_offset + 1, len)?;
-
+			let dynamic_offset = as_usize(&peek_32_bytes(data, offset)?)?;
+			let len = as_usize(&peek_32_bytes(data, dynamic_offset)?)?;
+			let bytes = take_bytes(data, dynamic_offset + 32, len)?;
 			let result = DecodeResult {
-				token: Token::String(String::from_utf8(taken.bytes)?),
-				new_offset: offset + 1,
+				token: Token::String(String::from_utf8(bytes)?),
+				new_offset: offset + 32,
 			};
-
 			Ok(result)
-		},
+		}
 		ParamType::Array(ref t) => {
-			let offset_slice = peek(slices, offset)?;
-			let len_offset = (as_u32(offset_slice)? / 32) as usize;
+			let len_offset = as_usize(&peek_32_bytes(data, offset)?)?;
+			let len = as_usize(&peek_32_bytes(data, len_offset)?)?;
 
-			let len_slice = peek(slices, len_offset)?;
-			let len = as_u32(len_slice)? as usize;
+			let tail_offset = len_offset + 32;
+			let tail = &data[tail_offset..];
 
-			let sub_slices = &slices[len_offset + 1..];
-			let mut tokens = Vec::with_capacity(len);
+			let mut tokens = vec![];
 			let mut new_offset = 0;
+
 			for _ in 0..len {
-				let res = decode_param(t, &sub_slices, new_offset)?;
+				let res = decode_param(t, &tail, new_offset)?;
 				new_offset = res.new_offset;
 				tokens.push(res.token);
 			}
 
 			let result = DecodeResult {
 				token: Token::Array(tokens),
-				new_offset: offset + 1,
+				new_offset: offset + 32,
 			};
 
 			Ok(result)
-		},
+		}
 		ParamType::FixedArray(ref t, len) => {
-			let mut tokens = Vec::with_capacity(len);
-			let new_offset = if param.is_dynamic() {
-				let offset_slice = peek(slices, offset)?;
-				let tail_offset = (as_u32(offset_slice)? / 32) as usize;
-				let slices = &slices[tail_offset..];
-				let mut new_offset = 0;
+			let is_dynamic = param.is_dynamic();
 
-				for _ in 0..len {
-					let res = decode_param(t, &slices, new_offset)?;
-					new_offset = res.new_offset;
-					tokens.push(res.token);
-				}
-				offset + 1
+			let (tail, mut new_offset) = if is_dynamic {
+				(&data[as_usize(&peek_32_bytes(data, offset)?)?..], 0)
 			} else {
-				let mut new_offset = offset;
-
-				for _ in 0..len {
-					let res = decode_param(t, &slices, new_offset)?;
-					new_offset = res.new_offset;
-					tokens.push(res.token);
-				}
-				new_offset
+				(data, offset)
 			};
+
+			let mut tokens = vec![];
+
+			for _ in 0..len {
+				let res = decode_param(t, &tail, new_offset)?;
+				new_offset = res.new_offset;
+				tokens.push(res.token);
+			}
 
 			let result = DecodeResult {
 				token: Token::FixedArray(tokens),
-				new_offset,
+				new_offset: if is_dynamic { offset + 32 } else { new_offset },
 			};
 
 			Ok(result)
@@ -233,18 +203,16 @@ fn decode_param(param: &ParamType, slices: &[Word], offset: usize) -> Result<Dec
 
 			// The first element in a dynamic Tuple is an offset to the Tuple's data
 			// For a static Tuple the data begins right away
-			let (slices, mut new_offset) = if is_dynamic {
-				let offset_slice = peek(slices, offset)?;
-				let tail_offset = (as_u32(offset_slice)? / 32) as usize;
-				(&slices[tail_offset..], 0)
+			let (tail, mut new_offset) = if is_dynamic {
+				(&data[as_usize(&peek_32_bytes(data, offset)?)?..], 0)
 			} else {
-				(slices, offset)
+				(data, offset)
 			};
 
 			let len = t.len();
 			let mut tokens = Vec::with_capacity(len);
 			for i in 0..len {
-				let res = decode_param(&t[i], &slices, new_offset)?;
+				let res = decode_param(&t[i], &tail, new_offset)?;
 				new_offset = res.new_offset;
 				tokens.push(res.token);
 			}
@@ -532,6 +500,47 @@ mod tests {
 	}
 
 	#[test]
+	fn decode_data_with_size_that_is_not_a_multiple_of_32() {
+		let encoded = hex!(
+			"
+            0000000000000000000000000000000000000000000000000000000000000000
+            00000000000000000000000000000000000000000000000000000000000000a0
+            0000000000000000000000000000000000000000000000000000000000000152
+            0000000000000000000000000000000000000000000000000000000000000001
+            000000000000000000000000000000000000000000000000000000000054840d
+            0000000000000000000000000000000000000000000000000000000000000092
+            3132323033393637623533326130633134633938306235616566666231373034
+            3862646661656632633239336139353039663038656233633662306635663866
+            3039343265376239636337366361353163636132366365353436393230343438
+            6533303866646136383730623565326165313261323430396439343264653432
+            3831313350373230703330667073313678390000000000000000000000000000
+            0000000000000000000000000000000000103933633731376537633061363531
+            3761
+        "
+		);
+
+		assert_eq!(
+			decode(
+				&[
+					ParamType::Uint(256),
+					ParamType::String,
+					ParamType::String,
+					ParamType::Uint(256),
+					ParamType::Uint(256),
+				],
+				&encoded,
+			).unwrap(),
+			&[
+				Token::Uint(Uint::from(0)),
+				Token::String(String::from("12203967b532a0c14c980b5aeffb17048bdfaef2c293a9509f08eb3c6b0f5f8f0942e7b9cc76ca51cca26ce546920448e308fda6870b5e2ae12a2409d942de428113P720p30fps16x9")),
+				Token::String(String::from("93c717e7c0a6517a")),
+				Token::Uint(Uint::from(1)),
+				Token::Uint(Uint::from(5538829))
+			]
+		);
+	}
+
+	#[test]
 	fn decode_after_fixed_bytes_with_less_than_32_bytes() {
 		let encoded = hex!("
 			0000000000000000000000008497afefdc5ac170a664a231f6efb25526ef813f
@@ -562,4 +571,3 @@ mod tests {
 		);
 	}
 }
-
