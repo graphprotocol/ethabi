@@ -16,6 +16,14 @@ impl Writer {
 			ParamType::String => "string".to_owned(),
 			ParamType::FixedArray(ref param, len) => format!("{}[{}]", Writer::write(param), len),
 			ParamType::Array(ref param) => format!("{}[]", Writer::write(param)),
+			ParamType::Tuple(ref params) => format!(
+				"({})",
+				params
+					.iter()
+					.map(|ref t| format!("{}", t))
+					.collect::<Vec<String>>()
+					.join(",")
+			),
 		}
 	}
 }
