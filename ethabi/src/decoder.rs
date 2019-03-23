@@ -177,9 +177,34 @@ fn decode_param(param: &ParamType, data: &[u8], offset: usize) -> Result<DecodeR
 				new_offset,
 			};
 
-			Ok(result)
-		}
-	}
+            Ok(result)
+        }
+        ParamType::Tuple(ref t) => {
+            let offset_slice = try!(peek(slices, offset));
+            let len_offset = (try!(as_u32(offset_slice)) / 32) as usize;
+
+            let len_slice = try!(peek(slices, len_offset));
+            let len = try!(as_u32(len_slice)) as usize;
+
+            let mut tokens = vec![];
+            let mut new_offset = len_offset + 1;
+            let mut token = 0;
+
+            for _ in 0..len {
+                let res = try!(decode_param(&t[token], &slices, new_offset));
+                new_offset = res.new_offset;
+                tokens.push(res.token);
+                token += 1;
+            }
+
+            let result = DecodeResult {
+                token: Token::Tuple(tokens),
+                new_offset: offset + 1,
+            };
+
+            Ok(result)
+        }
+    }
 }
 
 #[cfg(test)]
