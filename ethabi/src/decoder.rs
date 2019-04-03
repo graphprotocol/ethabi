@@ -77,7 +77,11 @@ fn take_bytes(data: &[u8], offset: usize, len: usize) -> Result<Vec<u8>, Error> 
 	}
 }
 
-fn decode_param(param: &ParamType, data: &[u8], offset: usize) -> Result<DecodeResult, Error> {
+fn decode_param(
+    param: &ParamType,
+    data: &[u8],
+    offset: usize
+) -> Result<DecodeResult, Error> {
 	match *param {
 		ParamType::Address => {
 			let slice = peek_32_bytes(data, offset)?;
@@ -180,26 +184,25 @@ fn decode_param(param: &ParamType, data: &[u8], offset: usize) -> Result<DecodeR
             Ok(result)
         }
         ParamType::Tuple(ref t) => {
-            let offset_slice = try!(peek(slices, offset));
-            let len_offset = (try!(as_u32(offset_slice)) / 32) as usize;
+            let tuple_len_offset = if param.is_dynamic() {
+				as_usize(&peek_32_bytes(data, offset)?)?
+            } else {
+                offset
+            };
 
-            let len_slice = try!(peek(slices, len_offset));
-            let len = try!(as_u32(len_slice)) as usize;
-
-            let mut tokens = vec![];
-            let mut new_offset = len_offset + 1;
-            let mut token = 0;
-
-            for _ in 0..len {
-                let res = try!(decode_param(&t[token], &slices, new_offset));
-                new_offset = res.new_offset;
+            let len = t.len();
+            let mut tokens = Vec::with_capacity(len);
+            let tuple_slices = &slices[tuple_len_offset..];
+            let mut new_offset = 0;
+            for i in 0..len {
+                let res = decode_param(&t[i], &tuple_slices, new_offset)?;
+                new_offset = new_offset + 32;
                 tokens.push(res.token);
-                token += 1;
             }
 
             let result = DecodeResult {
                 token: Token::Tuple(tokens),
-                new_offset: offset + 1,
+                new_offset: new_offset + 32,
             };
 
             Ok(result)
@@ -510,6 +513,70 @@ mod tests {
 		assert!(decode(&[ParamType::FixedBytes(0)], &[]).is_ok());
 		assert!(decode(&[ParamType::FixedArray(Box::new(ParamType::Bool), 0)], &[]).is_ok());
 	}
+
+    #[test]
+    fn decode_static_tuple_of_addresses_and_uints() {
+        let encoded = hex!(
+            "
+			0000000000000000000000001111111111111111111111111111111111111111
+			0000000000000000000000002222222222222222222222222222222222222222
+			1111111111111111111111111111111111111111111111111111111111111111
+		"
+        );
+        let address1 = Token::Address([0x11u8; 20].into());
+        let address2 = Token::Address([0x22u8; 20].into());
+        let uint = Token::Uint([0x11u8; 32].into());
+        let tuple = Token::Tuple(vec![address1, address2, uint]);
+        let expected = vec![tuple];
+        let decoded = decode(&[ParamType::Tuple(vec![Box::new(ParamType::Address),Box::new(ParamType::Address), Box::new(ParamType::Uint(32))])], &encoded).unwrap();
+        assert_eq!(decoded, expected);
+    }
+
+    #[test]
+    fn encode_dynamic_tuple() {
+        let encoded = hex!(
+            "
+            0000000000000000000000000000000000000000000000000000000000000020
+            0000000000000000000000000000000000000000000000000000000000000040
+            0000000000000000000000000000000000000000000000000000000000000080
+			0000000000000000000000000000000000000000000000000000000000000009
+			6761766f66796f726b0000000000000000000000000000000000000000000000
+			0000000000000000000000000000000000000000000000000000000000000009
+			6761766f66796f726b0000000000000000000000000000000000000000000000
+		"
+        );
+        let string1 = Token::String("gavofyork".to_owned());
+        let string2 = Token::String("gavofyork".to_owned());
+        let tuple = Token::Tuple(vec![string1,string2]);
+        let decoded = decode(
+            &[ParamType::Tuple(vec![Box::new(ParamType::String),Box::new(ParamType::String)])],&encoded).unwrap();
+        let expected = vec![tuple];
+        assert_eq!(decoded, expected);
+    }
+
+    #[test]
+    fn decode_complex_tuple_of_dynamic_and_static_types() {
+        let encoded = hex!(
+            "
+            0000000000000000000000000000000000000000000000000000000000000020
+            1111111111111111111111111111111111111111111111111111111111111111
+            0000000000000000000000000000000000000000000000000000000000000080
+            0000000000000000000000001111111111111111111111111111111111111111
+			0000000000000000000000002222222222222222222222222222222222222222
+			0000000000000000000000000000000000000000000000000000000000000009
+			6761766f66796f726b0000000000000000000000000000000000000000000000
+		"
+        );
+        let uint = Token::Uint([0x11u8; 32].into());
+        let string = Token::String("gavofyork".to_owned());
+        let address1 = Token::Address([0x11u8; 20].into());
+        let address2 = Token::Address([0x22u8; 20].into());
+        let tuple = Token::Tuple(vec![uint,string,address1,address2]);
+        let expected = vec![tuple];
+        let decoded = decode(&[ParamType::Tuple(vec![Box::new(ParamType::Uint(32)), Box::new(ParamType::String),Box::new(ParamType::Address),Box::new(ParamType::Address)])], &encoded).unwrap();
+        assert_eq!(decoded, expected);
+    }
+}
 
 	#[test]
 	fn decode_data_with_size_that_is_not_a_multiple_of_32() {

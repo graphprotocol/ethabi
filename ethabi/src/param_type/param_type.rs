@@ -44,15 +44,14 @@ impl ParamType {
             _ => false,
         }
     }
-
-	/// returns whether this param type is dynamic
-	pub fn is_dynamic(&self) -> bool {
-		match self {
-			ParamType::Bytes | ParamType::String | ParamType::Array(_) => true,
-			ParamType::FixedArray(elem_type, _) => elem_type.is_dynamic(),
-			_ => false
-		}
-	}
+    pub fn is_dynamic(&self) -> bool {
+        match self {
+            ParamType::Bytes | ParamType::String | ParamType::Array(_) => true,
+            ParamType::FixedArray(elem_type, _) => elem_type.is_dynamic(),
+            ParamType::Tuple(params) => params.iter().any(|param| param.is_dynamic()),
+            _ => false
+        }
+    }
 }
 
 #[cfg(test)]
