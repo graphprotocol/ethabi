@@ -227,6 +227,16 @@ impl Token {
 			})
 		}
 	}
+
+    /// Check if the token is a dynamic type resulting in prefixed encoding
+    pub fn is_dynamic(&self) -> bool {
+        match self {
+            Token::Bytes(_) | Token::String(_) | Token::Array(_) => true,
+            Token::FixedArray(tokens) => tokens.iter().any(|token| token.is_dynamic()),
+            Token::Tuple(tokens) => tokens.iter().any(|token| token.is_dynamic()),
+            _ => false
+        }
+    }
 }
 
 
