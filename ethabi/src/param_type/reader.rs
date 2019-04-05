@@ -8,17 +8,20 @@ impl Reader {
 	pub fn read(name: &str) -> Result<ParamType, Error> {
 		match name.chars().last() {
 			// check if it is a struct
-			Some(']') if name.starts_with('[') => {
+			Some(')') => {
+                if !name.starts_with('(') {
+                    return Err(ErrorKind::InvalidName(name.to_owned()).into());
+                };
 				let mut subtypes = Vec::new();
 				let mut nested = 0isize;
 				let mut last_item = 1;
 
 				for (pos, c) in name.chars().enumerate() {
 					match c {
-						'[' => {
+						'(' => {
 							nested += 1;
 						}
-						']' => {
+						')' => {
 							nested -= 1;
 							if nested < 0 {
 								return Err(Error::InvalidName(name.to_owned()));
@@ -99,8 +102,8 @@ impl Reader {
 
 #[cfg(test)]
 mod tests {
-	use super::Reader;
 	use ParamType;
+	use super::Reader;
 
 	#[test]
 	fn test_read_param() {
@@ -139,11 +142,11 @@ mod tests {
 	#[test]
 	fn test_read_struct_param() {
 		assert_eq!(
-			Reader::read("[address,bool]").unwrap(),
+			Reader::read("(address,bool)").unwrap(),
 			ParamType::Tuple(vec![Box::new(ParamType::Address), Box::new(ParamType::Bool)])
 		);
 		assert_eq!(
-			Reader::read("[bool[3],uint256]").unwrap(),
+			Reader::read("(bool[3],uint256)").unwrap(),
 			ParamType::Tuple(vec![
 				Box::new(ParamType::FixedArray(Box::new(ParamType::Bool), 3)),
 				Box::new(ParamType::Uint(256))
