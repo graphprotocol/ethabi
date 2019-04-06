@@ -2,9 +2,9 @@
 
 use serde::de::{Error, MapAccess, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer};
-use std::{fmt, io};
+use serde_json::Value;
+use std::{fmt};
 use ParamType;
-use {errors, Constructor, ErrorKind, Event, Function};
 
 /// Event param specification.
 #[derive(Debug, Clone, PartialEq)]
@@ -18,7 +18,7 @@ pub struct EventParam {
 }
 
 pub struct TupleParams {
-    params: Vec<EventParam>,
+    params: Vec<Box<ParamType>>,
 }
 
 impl<'a> Deserialize<'a> for TupleParams {
@@ -88,17 +88,17 @@ impl<'a> Visitor<'a> for EventParamVisitor {
             }
         }
         let name = name.ok_or_else(|| Error::missing_field("name"))?;
-        let kind = kind.ok_or_else(|| Error::missing_field("kind")).map(|t| {
-            if let ParamType::Tuple(_) = t {
-                components.map(|component| component.params).map(|ps| {
-                    ParamType::Tuple(ps.into_iter()
-                        .map(|param| Box::new(param.kind))
-                        .collect::<Vec<Box<ParamType>>>())
-                }).unwrap()
-            } else {
-                t
-            }
-        })?;
+        let kind = kind
+            .ok_or_else(|| Error::missing_field("kind"))
+            .and_then(|param_type| {
+                if let ParamType::Tuple(_) = param_type {
+                    let tuple_params= components
+                        .ok_or_else(|| Error::missing_field("components"))?;
+                    Ok(ParamType::Tuple(tuple_params.params))
+                } else {
+                    Ok(param_type)
+                }
+            })?;
         let indexed = indexed.unwrap_or(false);
         Ok(EventParam {
             name,
@@ -120,11 +120,13 @@ impl<'a> Visitor<'a> for TupleParamsVisitor {
     where
         A: SeqAccess<'a>,
     {
-        let mut params: Vec<EventParam> = Vec::new();
+        let mut params: Vec<Box<ParamType>> = Vec::new();
 
         while let Some(param) = seq.next_element()? {
-            let p: EventParam = param;
-            params.push(p);
+            let p: Value = param;
+            let kind: &Value = p.get("type")
+                .ok_or_else(|| Error::custom("Invalid tuple param type"))?;
+            params.push(Box::new(ParamType::deserialize(kind).unwrap()));
         }
 
         Ok(TupleParams { params })
