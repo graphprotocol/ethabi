@@ -44,6 +44,9 @@ impl ParamType {
             _ => false,
         }
     }
+
+	/// returns whether a ParamType is dynamic
+	/// used to decide how the ParamType should be encoded
     pub fn is_dynamic(&self) -> bool {
         match self {
             ParamType::Bytes | ParamType::String | ParamType::Array(_) => true,
