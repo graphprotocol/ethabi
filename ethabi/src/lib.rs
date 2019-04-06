@@ -32,6 +32,7 @@ mod log;
 mod operation;
 mod param;
 mod signature;
+mod tuple_params;
 mod util;
 
 #[cfg(test)]
@@ -50,6 +51,7 @@ pub use param::Param;
 pub use log::{Log, RawLog, LogParam, ParseLog, LogFilter};
 pub use event::Event;
 pub use event_param::EventParam;
+pub use tuple_params::TupleParams;
 
 /// ABI word.
 pub type Word = [u8; 32];
