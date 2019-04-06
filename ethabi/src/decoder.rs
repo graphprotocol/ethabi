@@ -533,12 +533,15 @@ mod tests {
         let uint = Token::Uint([0x11u8; 32].into());
         let tuple = Token::Tuple(vec![address1, address2, uint]);
         let expected = vec![tuple];
-        let decoded = decode(&[ParamType::Tuple(vec![Box::new(ParamType::Address),Box::new(ParamType::Address), Box::new(ParamType::Uint(32))])], &encoded).unwrap();
+        let decoded = decode(
+			&[ParamType::Tuple(vec![Box::new(ParamType::Address),Box::new(ParamType::Address), Box::new(ParamType::Uint(32))])],
+			&encoded
+		).unwrap();
         assert_eq!(decoded, expected);
     }
 
     #[test]
-    fn encode_dynamic_tuple() {
+    fn decode_dynamic_tuple() {
         let encoded = hex!(
             "
             0000000000000000000000000000000000000000000000000000000000000020
@@ -578,7 +581,13 @@ mod tests {
         let address2 = Token::Address([0x22u8; 20].into());
         let tuple = Token::Tuple(vec![uint,string,address1,address2]);
         let expected = vec![tuple];
-        let decoded = decode(&[ParamType::Tuple(vec![Box::new(ParamType::Uint(32)), Box::new(ParamType::String),Box::new(ParamType::Address),Box::new(ParamType::Address)])], &encoded).unwrap();
+        let decoded = decode(&[
+			ParamType::Tuple(vec![
+					Box::new(ParamType::Uint(32)),
+					Box::new(ParamType::String),
+					Box::new(ParamType::Address),
+					Box::new(ParamType::Address)]
+			)], &encoded).unwrap();
         assert_eq!(decoded, expected);
     }
 
@@ -621,6 +630,81 @@ mod tests {
 				Token::Uint(Uint::from(5538829))
 			]
 		);
+	}
+
+	#[test]
+	fn decode_params_containing_dynamic_tuple() {
+		let encoded = hex!(
+            "
+            0000000000000000000000002222222222222222222222222222222222222222
+			00000000000000000000000000000000000000000000000000000000000000a0
+			0000000000000000000000003333333333333333333333333333333333333333
+			0000000000000000000000004444444444444444444444444444444444444444
+			0000000000000000000000000000000000000000000000000000000000000000
+			0000000000000000000000000000000000000000000000000000000000000001
+			0000000000000000000000000000000000000000000000000000000000000060
+			00000000000000000000000000000000000000000000000000000000000000a0
+			0000000000000000000000000000000000000000000000000000000000000009
+			7370616365736869700000000000000000000000000000000000000000000000
+			0000000000000000000000000000000000000000000000000000000000000006
+			6379626f72670000000000000000000000000000000000000000000000000000
+		"
+        );
+		let address1 = Token::Address([0x22u8; 20].into());
+		let bool1 = Token::Bool(true);
+		let string1 = Token::String("spaceship".to_owned());
+		let string2 = Token::String("cyborg".to_owned());
+		let tuple = Token::Tuple(vec![bool1, string1,string2]);
+		let address2 = Token::Address([0x33u8; 20].into());
+		let address3 = Token::Address([0x44u8; 20].into());
+		let bool2 = Token::Bool(false);
+		let expected = vec![address1,tuple,address2,address3,bool2];
+		let decoded = decode(&[
+			ParamType::Address,
+			ParamType::Tuple(vec![
+				Box::new(ParamType::Bool),
+				Box::new(ParamType::String),
+				Box::new(ParamType::String),
+			]),
+			ParamType::Address,
+			ParamType::Address,
+			ParamType::Bool
+		], &encoded).unwrap();
+		assert_eq!(decoded, expected);
+	}
+
+	#[test]
+	fn decode_params_containing_static_tuple() {
+		let encoded = hex!(
+            "
+            0000000000000000000000001111111111111111111111111111111111111111
+            0000000000000000000000002222222222222222222222222222222222222222
+			0000000000000000000000000000000000000000000000000000000000000001
+			0000000000000000000000000000000000000000000000000000000000000000
+			0000000000000000000000003333333333333333333333333333333333333333
+			0000000000000000000000004444444444444444444444444444444444444444
+		"
+        );
+		let address1 = Token::Address([0x11u8; 20].into());
+		let address2 = Token::Address([0x22u8; 20].into());
+		let bool1 = Token::Bool(true);
+		let bool2 = Token::Bool(false);
+		let tuple = Token::Tuple(vec![address2,bool1,bool2]);
+		let address3 = Token::Address([0x33u8; 20].into());
+		let address4 = Token::Address([0x44u8; 20].into());
+
+		let expected = vec![address1,tuple,address3,address4];
+		let decoded = decode(&[
+			ParamType::Address,
+			ParamType::Tuple(vec![
+				Box::new(ParamType::Address),
+				Box::new(ParamType::Bool),
+				Box::new(ParamType::Bool),
+			]),
+			ParamType::Address,
+			ParamType::Address,
+		], &encoded).unwrap();
+		assert_eq!(decoded, expected);
 	}
 
 	#[test]
