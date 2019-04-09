@@ -9,34 +9,88 @@ impl Reader {
 		match name.chars().last() {
 			// check if it is a struct
 			Some(')') => {
-                if !name.starts_with('(') {
-                    return Err(ErrorKind::InvalidName(name.to_owned()).into());
-                };
+				if !name.starts_with('(') {
+					return Err(ErrorKind::InvalidName(name.to_owned()).into());
+				};
+
 				let mut subtypes = Vec::new();
+				let mut subtuples = Vec::new();
 				let mut nested = 0isize;
 				let mut last_item = 1;
 
+				// Iterate over name and build the nested tuple structure
 				for (pos, c) in name.chars().enumerate() {
 					match c {
 						'(' => {
 							nested += 1;
+							// If an '(' is encountered within the tuple
+							// insert an empty subtuples vector to be filled
+							if nested > 1 {
+								subtuples.push(vec![]);
+								last_item = pos + 1;
+							}
 						}
 						')' => {
 							nested -= 1;
+							// End parsing and return an error if parentheses aren't symmetrical
 							if nested < 0 {
 								return Err(Error::InvalidName(name.to_owned()));
-							} else if nested == 0 {
+							}
+							// If there have not been any characters since the last item
+							// increment position without inserting any subtypes
+							else if name[last_item..pos].len() < 1 {
+								last_item = pos + 1;
+							}
+							// If the item is in the top level of the tuple insert it into subtypes
+							else if nested == 0 {
 								let sub = &name[last_item..pos];
 								let subtype = Reader::read(sub)?;
 								subtypes.push(Box::new(subtype));
 								last_item = pos + 1;
 							}
+							// If the item is in a sublevel of the tuple:
+							// insert it into the subtuple vector for the current depth level
+							// process all the subtuple vectors created into sub tuples and insert
+							// them into subtypes
+							else if nested > 0 {
+								let sub = &name[last_item..pos];
+								let subtype = Reader::read(sub)?;
+								subtuples[(nested - 1) as usize].push(Box::new(subtype));
+								let mut tuple_params: Vec<Box<ParamType>> = vec![];
+								for (index, tuple_param_set) in subtuples.into_iter().enumerate() {
+									if index == 0 {
+										tuple_params = tuple_param_set;
+									} else {
+										tuple_params
+											.push(Box::new(ParamType::Tuple(tuple_param_set)));
+									}
+								}
+								subtypes.push(Box::new(ParamType::Tuple(tuple_params)));
+								subtuples = Vec::new();
+								last_item = pos + 1;
+							}
 						}
-						',' if nested == 1 => {
-							let sub = &name[last_item..pos];
-							let subtype = Reader::read(sub)?;
-							subtypes.push(Box::new(subtype));
-							last_item = pos + 1;
+						',' => {
+							// If there have not been any characters since the last item
+							// increment position without inserting any subtypes
+							if name[last_item..pos].len() < 1 {
+								last_item = pos + 1
+							}
+							// If the item is in the top level of the tuple insert it into subtypes
+							else if nested == 1 {
+								let sub = &name[last_item..pos];
+								let subtype = Reader::read(sub)?;
+								subtypes.push(Box::new(subtype));
+								last_item = pos + 1;
+							}
+							// If the item is in a sublevel of the tuple
+							// insert it into the subtuple vector for the current depth level
+							else if nested > 1 {
+								let sub = &name[last_item..pos];
+								let subtype = Reader::read(sub)?;
+								subtuples[(nested - 2) as usize].push(Box::new(subtype));
+								last_item = pos + 1;
+							}
 						}
 						_ => (),
 					}
@@ -144,6 +198,57 @@ mod tests {
 		assert_eq!(
 			Reader::read("(address,bool)").unwrap(),
 			ParamType::Tuple(vec![Box::new(ParamType::Address), Box::new(ParamType::Bool)])
+		);
+		assert_eq!(
+			Reader::read("(bool[3],uint256)").unwrap(),
+			ParamType::Tuple(vec![
+				Box::new(ParamType::FixedArray(Box::new(ParamType::Bool), 3)),
+				Box::new(ParamType::Uint(256))
+			])
+		);
+	}
+
+	#[test]
+	fn test_read_nested_struct_param() {
+		assert_eq!(
+			Reader::read("(address,bool,(bool,uint256))").unwrap(),
+			ParamType::Tuple(vec![
+				Box::new(ParamType::Address),
+				Box::new(ParamType::Bool),
+				Box::new(ParamType::Tuple(vec![
+					Box::new(ParamType::Bool),
+					Box::new(ParamType::Uint(256))
+				]))
+			])
+		);
+		assert_eq!(
+			Reader::read("(bool[3],uint256)").unwrap(),
+			ParamType::Tuple(vec![
+				Box::new(ParamType::FixedArray(Box::new(ParamType::Bool), 3)),
+				Box::new(ParamType::Uint(256))
+			])
+		);
+	}
+	#[test]
+	fn test_read_complex_nested_struct_param() {
+		assert_eq!(
+			Reader::read("(address,bool,(bool,uint256,(bool,uint256)),(bool,uint256))").unwrap(),
+			ParamType::Tuple(vec![
+				Box::new(ParamType::Address),
+				Box::new(ParamType::Bool),
+				Box::new(ParamType::Tuple(vec![
+					Box::new(ParamType::Bool),
+					Box::new(ParamType::Uint(256)),
+					Box::new(ParamType::Tuple(vec![
+						Box::new(ParamType::Bool),
+						Box::new(ParamType::Uint(256))
+					]))
+				])),
+				Box::new(ParamType::Tuple(vec![
+					Box::new(ParamType::Bool),
+					Box::new(ParamType::Uint(256))
+				]))
+			])
 		);
 		assert_eq!(
 			Reader::read("(bool[3],uint256)").unwrap(),
