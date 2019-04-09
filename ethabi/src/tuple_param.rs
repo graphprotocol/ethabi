@@ -37,6 +37,7 @@ impl<'a> Visitor<'a> for TupleParamVisitor {
 	{
 		let mut name = None;
 		let mut kind = None;
+		let mut components = None;
 
 		while let Some(ref key) = map.next_key::<String>()? {
 			match key.as_ref() {
@@ -52,11 +53,27 @@ impl<'a> Visitor<'a> for TupleParamVisitor {
 					}
 					kind = Some(map.next_value()?);
 				}
+				"components" => {
+					if components.is_some() {
+						return Err(Error::duplicate_field("components"));
+					}
+					let component: Vec<TupleParam> = map.next_value()?;
+					components = Some(component)
+				}
 				_ => {}
 			}
 		}
 
-		let kind = kind.ok_or_else(|| Error::missing_field("type"))?;
+		let kind = kind.ok_or_else(|| Error::missing_field("kind")).and_then(|param_type| {
+			if let ParamType::Tuple(_) = param_type {
+				let tuple_params = components.ok_or_else(|| Error::missing_field("components"))?;
+				Ok(ParamType::Tuple(
+					tuple_params.into_iter().map(|param| param.kind).map(Box::new).collect(),
+				))
+			} else {
+				Ok(param_type)
+			}
+		})?;
 
 		Ok(TupleParam {
 			name,
@@ -72,7 +89,7 @@ mod tests {
 	use TupleParam;
 
 	#[test]
-	fn event_param_deserialization() {
+	fn tuple_param_deserialization() {
 		let s = r#"[{
 			"name": "foo",
 			"type": "address"

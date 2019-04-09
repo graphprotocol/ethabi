@@ -126,12 +126,18 @@ mod tests {
             "indexed": true,
             "components": [
                 {
-                    "name": "baseToken",
-                    "type": "address"
+                    "name": "amount",
+                    "type": "uint48"
                 },
                 {
-                    "name": "startDate",
-                    "type": "uint48"
+                    "name": "things",
+                    "type": "tuple",
+                    "components": [
+                    	{
+                    		"name": "baseTupleParam",
+							"type": "address"
+						}
+					]
                 }
             ]
         }"#;
@@ -143,8 +149,10 @@ mod tests {
 			EventParam {
 				name: "foo".to_owned(),
 				kind: ParamType::Tuple(vec![
-					Box::new(ParamType::Address),
-					Box::new(ParamType::Uint(48))
+					Box::new(ParamType::Uint(48)),
+					Box::new(ParamType::Tuple(vec![
+						Box::new(ParamType::Address)
+					]))
 				]),
 				indexed: true,
 			}
