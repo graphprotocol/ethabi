@@ -56,15 +56,15 @@ impl Reader {
 								let sub = &name[last_item..pos];
 								let subtype = Reader::read(sub)?;
 								subtuples[(nested - 1) as usize].push(Box::new(subtype));
-								let mut tuple_params: Vec<Box<ParamType>> = vec![];
-								for (index, tuple_param_set) in subtuples.into_iter().enumerate() {
-									if index == 0 {
-										tuple_params = tuple_param_set;
-									} else {
+								let initial_tuple_params = subtuples.remove(0);
+								let tuple_params = subtuples.into_iter().fold(
+									initial_tuple_params,
+									|mut tuple_params, nested_param_set| {
 										tuple_params
-											.push(Box::new(ParamType::Tuple(tuple_param_set)));
-									}
-								}
+											.push(Box::new(ParamType::Tuple(nested_param_set)));
+										tuple_params
+									},
+								);
 								subtypes.push(Box::new(ParamType::Tuple(tuple_params)));
 								subtuples = Vec::new();
 								last_item = pos + 1;
@@ -221,14 +221,8 @@ mod tests {
 				]))
 			])
 		);
-		assert_eq!(
-			Reader::read("(bool[3],uint256)").unwrap(),
-			ParamType::Tuple(vec![
-				Box::new(ParamType::FixedArray(Box::new(ParamType::Bool), 3)),
-				Box::new(ParamType::Uint(256))
-			])
-		);
 	}
+
 	#[test]
 	fn test_read_complex_nested_struct_param() {
 		assert_eq!(
@@ -248,13 +242,6 @@ mod tests {
 					Box::new(ParamType::Bool),
 					Box::new(ParamType::Uint(256))
 				]))
-			])
-		);
-		assert_eq!(
-			Reader::read("(bool[3],uint256)").unwrap(),
-			ParamType::Tuple(vec![
-				Box::new(ParamType::FixedArray(Box::new(ParamType::Bool), 3)),
-				Box::new(ParamType::Uint(256))
 			])
 		);
 	}
