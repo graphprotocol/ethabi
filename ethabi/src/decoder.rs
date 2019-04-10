@@ -562,6 +562,62 @@ mod tests {
         assert_eq!(decoded, expected);
     }
 
+	#[test]
+	fn  decode_nested_tuple() {
+		let encoded = hex!(
+			"
+			0000000000000000000000000000000000000000000000000000000000000020
+			0000000000000000000000000000000000000000000000000000000000000080
+			0000000000000000000000000000000000000000000000000000000000000001
+			00000000000000000000000000000000000000000000000000000000000000c0
+			0000000000000000000000000000000000000000000000000000000000000100
+			0000000000000000000000000000000000000000000000000000000000000004
+			7465737400000000000000000000000000000000000000000000000000000000
+			0000000000000000000000000000000000000000000000000000000000000006
+			6379626f72670000000000000000000000000000000000000000000000000000
+			0000000000000000000000000000000000000000000000000000000000000060
+			00000000000000000000000000000000000000000000000000000000000000a0
+			00000000000000000000000000000000000000000000000000000000000000e0
+			0000000000000000000000000000000000000000000000000000000000000005
+			6e69676874000000000000000000000000000000000000000000000000000000
+			0000000000000000000000000000000000000000000000000000000000000003
+			6461790000000000000000000000000000000000000000000000000000000000
+			0000000000000000000000000000000000000000000000000000000000000040
+			0000000000000000000000000000000000000000000000000000000000000080
+			0000000000000000000000000000000000000000000000000000000000000004
+			7765656500000000000000000000000000000000000000000000000000000000
+			0000000000000000000000000000000000000000000000000000000000000008
+			66756e7465737473000000000000000000000000000000000000000000000000
+		"
+		);
+		let string1 = Token::String("test".to_owned());
+		let string2 = Token::String("cyborg".to_owned());
+		let string3 = Token::String("night".to_owned());
+		let string4 = Token::String("day".to_owned());
+		let string5 = Token::String("weee".to_owned());
+		let string6 = Token::String("funtests".to_owned());
+		let bool = Token::Bool(true);
+		let deep_tuple  = Token::Tuple(vec![string5, string6]);
+		let inner_tuple  = Token::Tuple(vec![string3, string4, deep_tuple]);
+		let outer_tuple = Token::Tuple(vec![string1, bool, string2, inner_tuple]);
+		let expected = vec![outer_tuple];
+		let decoded = decode(&[
+				ParamType::Tuple(vec![
+					Box::new(ParamType::String),
+					Box::new(ParamType::Bool),
+					Box::new(ParamType::String),
+					Box::new(ParamType::Tuple(vec![
+						Box::new(ParamType::String),
+						Box::new(ParamType::String),
+						Box::new(ParamType::Tuple(vec![
+							Box::new(ParamType::String), Box::new(ParamType::String)
+						]))
+					])),
+				])
+		],&encoded).unwrap();
+		assert_eq!(decoded, expected);
+	}
+
     #[test]
     fn decode_complex_tuple_of_dynamic_and_static_types() {
         let encoded = hex!(
@@ -579,7 +635,7 @@ mod tests {
         let string = Token::String("gavofyork".to_owned());
         let address1 = Token::Address([0x11u8; 20].into());
         let address2 = Token::Address([0x22u8; 20].into());
-        let tuple = Token::Tuple(vec![uint,string,address1,address2]);
+        let tuple = Token::Tuple(vec![uint, string, address1, address2]);
         let expected = vec![tuple];
         let decoded = decode(&[
 			ParamType::Tuple(vec![
