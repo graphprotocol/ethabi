@@ -169,17 +169,17 @@ fn encode_token(token: &Token) -> Mediate {
 				Mediate::Raw(encode_head_tail(&mediates))
 			}
 		},
-        Token::Tuple(ref tokens) if token.is_dynamic() => {
-            let mediates = tokens.iter().map(encode_token).collect();
+		Token::Tuple(ref tokens) if token.is_dynamic() => {
+			let mediates = tokens.iter().map(encode_token).collect();
 
-            Mediate::PrefixedTuple(mediates)
-        },
-        Token::Tuple(ref tokens) => {
-            let mediates = tokens.iter().map(encode_token).collect();
+			Mediate::PrefixedTuple(mediates)
+		},
+		Token::Tuple(ref tokens) => {
+			let mediates = tokens.iter().map(encode_token).collect();
 
-            Mediate::RawTuple(mediates)
-        }
-    }
+			Mediate::RawTuple(mediates)
+		}
+	}
 }
 
 #[cfg(test)]
@@ -606,45 +606,45 @@ mod tests {
 			0000000000000000000000001111111111111111111111111111111111111111
 			0000000000000000000000002222222222222222222222222222222222222222
 		"
-        )
-            .to_vec();
-        assert_eq!(encoded, expected);
-    }
+		)
+			.to_vec();
+		assert_eq!(encoded, expected);
+	}
 
-    #[test]
-    fn encode_dynamic_tuple() {
-        let string1 = Token::String("gavofyork".to_owned());
-        let string2 = Token::String("gavofyork".to_owned());
-        let tuple = Token::Tuple(vec![string1,string2]);
-        let encoded = encode(&vec![tuple]);
-        let expected = hex!(
-            "
-            0000000000000000000000000000000000000000000000000000000000000020
-            0000000000000000000000000000000000000000000000000000000000000040
-            0000000000000000000000000000000000000000000000000000000000000080
+	#[test]
+	fn encode_dynamic_tuple() {
+		let string1 = Token::String("gavofyork".to_owned());
+		let string2 = Token::String("gavofyork".to_owned());
+		let tuple = Token::Tuple(vec![string1,string2]);
+		let encoded = encode(&vec![tuple]);
+		let expected = hex!(
+			"
+			0000000000000000000000000000000000000000000000000000000000000020
+			0000000000000000000000000000000000000000000000000000000000000040
+			0000000000000000000000000000000000000000000000000000000000000080
 			0000000000000000000000000000000000000000000000000000000000000009
 			6761766f66796f726b0000000000000000000000000000000000000000000000
 			0000000000000000000000000000000000000000000000000000000000000009
 			6761766f66796f726b0000000000000000000000000000000000000000000000
 		"
-        )
-            .to_vec();
-        assert_eq!(encoded, expected);
-    }
+		)
+			.to_vec();
+		assert_eq!(encoded, expected);
+	}
 
-    #[test]
-    fn encode_dynamic_tuple_of_bytes2() {
-        let bytes =
-            hex!("4444444444444444444444444444444444444444444444444444444444444444444444444444");
-        let bytes2 =
-            hex!("6666666666666666666666666666666666666666666666666666666666666666666666666666");
-        let encoded = encode(&vec![Token::Tuple(vec![
-            Token::Bytes(bytes.to_vec()),
-            Token::Bytes(bytes2.to_vec()),
-        ])]);
+	#[test]
+	fn encode_dynamic_tuple_of_bytes2() {
+		let bytes =
+			hex!("4444444444444444444444444444444444444444444444444444444444444444444444444444");
+		let bytes2 =
+			hex!("6666666666666666666666666666666666666666666666666666666666666666666666666666");
+		let encoded = encode(&vec![Token::Tuple(vec![
+			Token::Bytes(bytes.to_vec()),
+			Token::Bytes(bytes2.to_vec()),
+		])]);
 
-        let expected = hex!(
-            "
+		let expected = hex!(
+			"
 			0000000000000000000000000000000000000000000000000000000000000020
 			0000000000000000000000000000000000000000000000000000000000000040
 			00000000000000000000000000000000000000000000000000000000000000a0
@@ -736,8 +736,8 @@ mod tests {
 		let bool2 = Token::Bool(false);
 		let encoded = encode(&vec![address1,tuple,address2,address3,bool2]);
 		let expected = hex!(
-            "
-            0000000000000000000000002222222222222222222222222222222222222222
+			"
+			0000000000000000000000002222222222222222222222222222222222222222
 			00000000000000000000000000000000000000000000000000000000000000a0
 			0000000000000000000000003333333333333333333333333333333333333333
 			0000000000000000000000004444444444444444444444444444444444444444
@@ -750,7 +750,7 @@ mod tests {
 			0000000000000000000000000000000000000000000000000000000000000006
 			6379626f72670000000000000000000000000000000000000000000000000000
 		"
-        )
+		)
 			.to_vec();
 		assert_eq!(encoded, expected);
 	}
@@ -766,15 +766,15 @@ mod tests {
 		let address4 = Token::Address([0x44u8; 20].into());
 		let encoded = encode(&vec![address1,tuple,address3,address4]);
 		let expected = hex!(
-            "
-            0000000000000000000000001111111111111111111111111111111111111111
-            0000000000000000000000002222222222222222222222222222222222222222
+			"
+			0000000000000000000000001111111111111111111111111111111111111111
+			0000000000000000000000002222222222222222222222222222222222222222
 			0000000000000000000000000000000000000000000000000000000000000001
 			0000000000000000000000000000000000000000000000000000000000000000
 			0000000000000000000000003333333333333333333333333333333333333333
 			0000000000000000000000004444444444444444444444444444444444444444
 		"
-        )
+		)
 			.to_vec();;
 		assert_eq!(encoded, expected);
 	}

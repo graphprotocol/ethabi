@@ -121,26 +121,26 @@ mod tests {
 	#[test]
 	fn event_param_tuple_deserialization() {
 		let s = r#"{
-            "name": "foo",
-            "type": "tuple",
-            "indexed": true,
-            "components": [
-                {
-                    "name": "amount",
-                    "type": "uint48"
-                },
-                {
-                    "name": "things",
-                    "type": "tuple",
-                    "components": [
-                    	{
-                    		"name": "baseTupleParam",
+			"name": "foo",
+			"type": "tuple",
+			"indexed": true,
+			"components": [
+				{
+					"name": "amount",
+					"type": "uint48"
+				},
+				{
+					"name": "things",
+					"type": "tuple",
+					"components": [
+						{
+							"name": "baseTupleParam",
 							"type": "address"
 						}
 					]
-                }
-            ]
-        }"#;
+				}
+			]
+		}"#;
 
 		let deserialized: EventParam = serde_json::from_str(s).unwrap();
 
