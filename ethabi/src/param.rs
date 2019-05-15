@@ -1,14 +1,85 @@
 //! Function param.
+use std::fmt;
+use serde::de::{Error, MapAccess, Visitor};
+use serde::{Deserialize, Deserializer};
 use ParamType;
+use TupleParam;
 
 /// Function param.
-#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Param {
 	/// Param name.
 	pub name: String,
 	/// Param type.
-	#[serde(rename="type")]
 	pub kind: ParamType,
+}
+
+impl<'a> Deserialize<'a> for Param {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+		where
+			D: Deserializer<'a>,
+	{
+		deserializer.deserialize_any(ParamVisitor)
+	}
+}
+
+struct ParamVisitor;
+
+impl<'a> Visitor<'a> for ParamVisitor {
+	type Value = Param;
+
+	fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+		write!(formatter, "a valid event parameter spec")
+	}
+
+	fn visit_map<V>(self, mut map: V) -> Result<Self::Value, V::Error>
+		where
+			V: MapAccess<'a>,
+	{
+		let mut name = None;
+		let mut kind = None;
+		let mut components = None;
+
+		while let Some(ref key) = map.next_key::<String>()? {
+			match key.as_ref() {
+				"name" => {
+					if name.is_some() {
+						return Err(Error::duplicate_field("name"));
+					}
+					name = Some(map.next_value()?);
+				}
+				"type" => {
+					if kind.is_some() {
+						return Err(Error::duplicate_field("kind"));
+					}
+					kind = Some(map.next_value()?);
+				}
+				"components" => {
+					if components.is_some() {
+						return Err(Error::duplicate_field("components"));
+					}
+					let component: Vec<TupleParam> = map.next_value()?;
+					components = Some(component)
+				}
+				_ => {}
+			}
+		}
+		let name = name.ok_or_else(|| Error::missing_field("name"))?;
+		let kind = kind.ok_or_else(|| Error::missing_field("kind")).and_then(|param_type| {
+			if let ParamType::Tuple(_) = param_type {
+				let tuple_params = components.ok_or_else(|| Error::missing_field("components"))?;
+				Ok(ParamType::Tuple(
+					tuple_params.into_iter().map(|param| param.kind).map(Box::new).collect(),
+				))
+			} else {
+				Ok(param_type)
+			}
+		})?;
+		Ok(Param {
+			name,
+			kind,
+		})
+	}
 }
 
 #[cfg(test)]
@@ -29,5 +100,44 @@ mod tests {
 			name: "foo".to_owned(),
 			kind: ParamType::Address,
 		});
+	}
+
+	#[test]
+	fn param_tuple_deserialization() {
+		let s = r#"{
+			"name": "foo",
+			"type": "tuple",
+			"components": [
+				{
+					"name": "amount",
+					"type": "uint48"
+				},
+				{
+					"name": "things",
+					"type": "tuple",
+					"components": [
+						{
+							"name": "baseTupleParam",
+							"type": "address"
+						}
+					]
+				}
+			]
+		}"#;
+
+		let deserialized: Param = serde_json::from_str(s).unwrap();
+
+		assert_eq!(
+			deserialized,
+			Param {
+				name: "foo".to_owned(),
+				kind: ParamType::Tuple(vec![
+					Box::new(ParamType::Uint(48)),
+					Box::new(ParamType::Tuple(vec![
+						Box::new(ParamType::Address)
+					]))
+				]),
+			}
+		);
 	}
 }
