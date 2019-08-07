@@ -65,16 +65,55 @@ impl<'a> Visitor<'a> for ParamVisitor {
 			}
 		}
 		let name = name.ok_or_else(|| Error::missing_field("name"))?;
-		let kind = kind.ok_or_else(|| Error::missing_field("kind")).and_then(|param_type| {
-			if let ParamType::Tuple(_) = param_type {
-				let tuple_params = components.ok_or_else(|| Error::missing_field("components"))?;
-				Ok(ParamType::Tuple(
-					tuple_params.into_iter().map(|param| param.kind).map(Box::new).collect(),
-				))
-			} else {
-				Ok(param_type)
-			}
-		})?;
+		let kind =
+			kind.ok_or_else(|| Error::missing_field("kind"))
+				.and_then(|param_type: ParamType| {
+					match param_type {
+						ParamType::Tuple(_) => {
+							let tuple_params =
+								components.ok_or_else(|| Error::missing_field("components"))?;
+							Ok(ParamType::Tuple(
+								tuple_params
+									.into_iter()
+									.map(|param| param.kind)
+									.map(Box::new)
+									.collect(),
+							))
+						}
+						ParamType::Array(inner_param_type) => match *inner_param_type {
+							ParamType::Tuple(_) => {
+								let tuple_params =
+									components.ok_or_else(|| Error::missing_field("components"))?;
+								Ok(ParamType::Array(Box::new(ParamType::Tuple(
+									tuple_params
+										.into_iter()
+										.map(|param| param.kind)
+										.map(Box::new)
+										.collect(),
+								))))
+							}
+							_ => Ok(ParamType::Array(inner_param_type)),
+						},
+						ParamType::FixedArray(inner_param_type, size) => match *inner_param_type {
+							ParamType::Tuple(_) => {
+								let tuple_params =
+									components.ok_or_else(|| Error::missing_field("components"))?;
+								Ok(ParamType::FixedArray(
+									Box::new(ParamType::Tuple(
+										tuple_params
+											.into_iter()
+											.map(|param| param.kind)
+											.map(Box::new)
+											.collect(),
+									)),
+									size,
+								))
+							}
+							_ => Ok(ParamType::FixedArray(inner_param_type, size)),
+						},
+						_ => Ok(param_type),
+					}
+				})?;
 		Ok(Param {
 			name,
 			kind,
@@ -137,6 +176,81 @@ mod tests {
 						Box::new(ParamType::Address)
 					]))
 				]),
+			}
+		);
+	}
+
+	#[test]
+	fn param_tuple_array_deserialization() {
+		let s = r#"{
+			"name": "foo",
+			"type": "tuple[]",
+			"components": [
+				{
+					"name": "amount",
+					"type": "uint48"
+				},
+				{
+					"name": "to",
+					"type": "address"
+				},
+				{
+					"name": "from",
+					"type": "address"
+				}
+			]
+		}"#;
+
+		let deserialized: Param = serde_json::from_str(s).unwrap();
+
+		assert_eq!(
+			deserialized,
+			Param {
+				name: "foo".to_owned(),
+				kind: ParamType::Array(Box::new(ParamType::Tuple(vec![
+					Box::new(ParamType::Uint(48)),
+					Box::new(ParamType::Address),
+					Box::new(ParamType::Address)
+				]))),
+			}
+		);
+	}
+
+	#[test]
+	fn param_tuple_fixed_array_deserialization() {
+		let s = r#"{
+			"name": "foo",
+			"type": "tuple[2]",
+			"components": [
+				{
+					"name": "amount",
+					"type": "uint48"
+				},
+				{
+					"name": "to",
+					"type": "address"
+				},
+				{
+					"name": "from",
+					"type": "address"
+				}
+			]
+		}"#;
+
+		let deserialized: Param = serde_json::from_str(s).unwrap();
+
+		assert_eq!(
+			deserialized,
+			Param {
+				name: "foo".to_owned(),
+				kind: ParamType::FixedArray(
+					Box::new(ParamType::Tuple(vec![
+						Box::new(ParamType::Uint(48)),
+						Box::new(ParamType::Address),
+						Box::new(ParamType::Address)
+					])),
+					2
+				),
 			}
 		);
 	}
