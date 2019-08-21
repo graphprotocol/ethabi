@@ -142,7 +142,7 @@ fn decode_param(
 			let len = as_usize(&peek_32_bytes(data, dynamic_offset)?)?;
 			let bytes = take_bytes(data, dynamic_offset + 32, len)?;
 			let result = DecodeResult {
-				token: Token::String(String::from_utf8(bytes)?),
+				token: Token::String(String::from_utf8_lossy(&*bytes).into()),
 				new_offset: offset + 32,
 			};
 			Ok(result)
@@ -791,6 +791,22 @@ mod tests {
 				Token::FixedBytes([0u8; 4].to_vec()),
 				Token::String("0x0000001F".into()),
 			]
+		);
+	}
+
+	#[test]
+	fn decode_broken_utf8() {
+		let encoded = hex!(
+			"
+			0000000000000000000000000000000000000000000000000000000000000020
+			0000000000000000000000000000000000000000000000000000000000000004
+			e4b88de500000000000000000000000000000000000000000000000000000000
+        "
+		);
+
+		assert_eq!(
+			decode(&[ParamType::String,], &encoded).unwrap(),
+			&[Token::String("不�".into())]
 		);
 	}
 }
