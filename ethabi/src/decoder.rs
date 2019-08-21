@@ -138,7 +138,7 @@ fn decode_param(param: &ParamType, data: &[u8], offset: usize) -> Result<DecodeR
 			let len = as_usize(&peek_32_bytes(data, dynamic_offset)?)?;
 			let bytes = take_bytes(data, dynamic_offset + 32, len)?;
 			let result = DecodeResult {
-				token: Token::String(String::from_utf8(bytes)?),
+				token: Token::String(String::from_utf8_lossy(&*bytes).into()),
 				new_offset: offset + 32,
 			};
 			Ok(result)
@@ -365,47 +365,6 @@ mod tests {
 	}
 
 	#[test]
-	fn decode_data_with_size_that_is_not_a_multiple_of_32() {
-		let encoded = hex!(
-			"
-			0000000000000000000000000000000000000000000000000000000000000000
-			00000000000000000000000000000000000000000000000000000000000000a0
-			0000000000000000000000000000000000000000000000000000000000000152
-			0000000000000000000000000000000000000000000000000000000000000001
-			000000000000000000000000000000000000000000000000000000000054840d
-			0000000000000000000000000000000000000000000000000000000000000092
-			3132323033393637623533326130633134633938306235616566666231373034
-			3862646661656632633239336139353039663038656233633662306635663866
-			3039343265376239636337366361353163636132366365353436393230343438
-			6533303866646136383730623565326165313261323430396439343264653432
-			3831313350373230703330667073313678390000000000000000000000000000
-			0000000000000000000000000000000000103933633731376537633061363531
-			3761
-		"
-		);
-
-		assert_eq!(
-			decode(
-				&[
-					ParamType::Uint(256),
-					ParamType::String,
-					ParamType::String,
-					ParamType::Uint(256),
-					ParamType::Uint(256),
-				],
-				&encoded,
-			).unwrap(),
-			&[
-				Token::Uint(Uint::from(0)),
-				Token::String(String::from("12203967b532a0c14c980b5aeffb17048bdfaef2c293a9509f08eb3c6b0f5f8f0942e7b9cc76ca51cca26ce546920448e308fda6870b5e2ae12a2409d942de428113P720p30fps16x9")),
-				Token::String(String::from("93c717e7c0a6517a")),
-				Token::Uint(Uint::from(1)),
-				Token::Uint(Uint::from(5538829))
-			]
-		);
-	}
-
-	#[test]
 	fn decode_params_containing_dynamic_tuple() {
 		let encoded = hex!(
 			"
@@ -481,37 +440,6 @@ mod tests {
 	}
 
 	#[test]
-	fn decode_after_fixed_bytes_with_less_than_32_bytes() {
-		let encoded = hex!("
-			0000000000000000000000008497afefdc5ac170a664a231f6efb25526ef813f
-			0000000000000000000000000000000000000000000000000000000000000000
-			0000000000000000000000000000000000000000000000000000000000000000
-			0000000000000000000000000000000000000000000000000000000000000080
-			000000000000000000000000000000000000000000000000000000000000000a
-			3078303030303030314600000000000000000000000000000000000000000000
-		");
-
-		assert_eq!(
-			decode(
-				&[
-					ParamType::Address,
-					ParamType::FixedBytes(32),
-					ParamType::FixedBytes(4),
-					ParamType::String,
-				],
-				&encoded,
-			)
-			.unwrap(),
-			&[
-				Token::Address(hex!("8497afefdc5ac170a664a231f6efb25526ef813f").into()),
-				Token::FixedBytes([0u8; 32].to_vec()),
-				Token::FixedBytes([0u8; 4].to_vec()),
-				Token::String("0x0000001F".into()),
-			]
-		);
-	}
-
-	#[test]
 	fn decode_data_with_size_that_is_not_a_multiple_of_32() {
 		let encoded = hex!(
 			"
@@ -580,6 +508,21 @@ mod tests {
 				Token::FixedBytes([0u8; 4].to_vec()),
 				Token::String("0x0000001F".into()),
 			]
+		)
+	}
+
+	fn decode_broken_utf8() {
+		let encoded = hex!(
+			"
+			0000000000000000000000000000000000000000000000000000000000000020
+			0000000000000000000000000000000000000000000000000000000000000004
+			e4b88de500000000000000000000000000000000000000000000000000000000
+        "
+		);
+
+		assert_eq!(
+			decode(&[ParamType::String,], &encoded).unwrap(),
+			&[Token::String("不�".into())]
 		);
 	}
 }
