@@ -143,6 +143,10 @@ fn decode_param(
 			let len = as_usize(&peek_32_bytes(data, dynamic_offset)?)?;
 			let bytes = take_bytes(data, dynamic_offset + 32, len)?;
 			let result = DecodeResult {
+				// NOTE: We're decoding strings using lossy UTF-8 decoding to
+				// prevent invalid strings written into contracts by either users or
+				// Solidity bugs from causing graph-node to fail decoding event
+				// data.
 				token: Token::String(String::from_utf8_lossy(&*bytes).into()),
 				new_offset: offset + 32,
 			};
