@@ -25,9 +25,9 @@ Ethereum ABI coder.
   Copyright 2016-2018 Parity Technologies (UK) Limited
 
 Usage:
-    ethabi encode function <abi-path> <function-name> [-p <param>]... [-l | --lenient]
+    ethabi encode function <abi-path> <function-name-or-signature> [-p <param>]... [-l | --lenient]
     ethabi encode params [-v <type> <param>]... [-l | --lenient]
-    ethabi decode function <abi-path> <function-name> <data>
+    ethabi decode function <abi-path> <function-name-or-signature> <data>
     ethabi decode params [-t <type>]... <data>
     ethabi decode log <abi-path> <event-name-or-signature> [-l <topic>]... <data>
     ethabi -h | --help
@@ -52,7 +52,7 @@ struct Args {
 	cmd_params: bool,
 	cmd_log: bool,
 	arg_abi_path: String,
-	arg_function_name: String,
+	arg_function_name_or_signature: String,
 	arg_event_name_or_signature: String,
 	arg_param: Vec<String>,
 	arg_type: Vec<String>,
@@ -83,11 +83,11 @@ fn execute<S, I>(command: I) -> Result<String, Error> where I: IntoIterator<Item
 		.and_then(|d| d.argv(command).deserialize())?;
 
 	if args.cmd_encode && args.cmd_function {
-		encode_input(&args.arg_abi_path, &args.arg_function_name, &args.arg_param, args.flag_lenient)
+		encode_input(&args.arg_abi_path, &args.arg_function_name_or_signature, &args.arg_param, args.flag_lenient)
 	} else if args.cmd_encode && args.cmd_params {
 		encode_params(&args.arg_type, &args.arg_param, args.flag_lenient)
 	} else if args.cmd_decode && args.cmd_function {
-		decode_call_output(&args.arg_abi_path, &args.arg_function_name, &args.arg_data)
+		decode_call_output(&args.arg_abi_path, &args.arg_function_name_or_signature, &args.arg_data)
 	} else if args.cmd_decode && args.cmd_params {
 		decode_params(&args.arg_type, &args.arg_data)
 	} else if args.cmd_decode && args.cmd_log {
@@ -97,11 +97,31 @@ fn execute<S, I>(command: I) -> Result<String, Error> where I: IntoIterator<Item
 	}
 }
 
-fn load_function(path: &str, function: &str) -> Result<Function, Error> {
+fn load_function(path: &str, name_or_signature: &str) -> Result<Function, Error> {
 	let file = File::open(path)?;
 	let contract = Contract::load(file)?;
-	let function = contract.function(function)?.clone();
-	Ok(function)
+	let params_start = name_or_signature.find('(');
+
+	match params_start {
+		// It's a signature
+		Some(params_start) => {
+			let name = &name_or_signature[..params_start];
+
+			contract.functions_by_name(name)?.iter().find(|f| {
+				f.signature() == name_or_signature
+			}).cloned().ok_or(ErrorKind::InvalidFunctionSignature(name_or_signature.to_owned()).into())
+		},
+
+		// It's a name
+		None => {
+			let functions = contract.functions_by_name(name_or_signature)?;
+			match functions.len() {
+				0 => unreachable!(),
+				1 => Ok(functions[0].clone()),
+				_ => Err(ErrorKind::AmbiguousFunctionName(name_or_signature.to_owned()).into())
+			}
+		},
+	}
 }
 
 fn load_event(path: &str, name_or_signature: &str) -> Result<Event, Error> {
@@ -141,8 +161,8 @@ fn parse_tokens(params: &[(ParamType, &str)], lenient: bool) -> Result<Vec<Token
 		.map_err(From::from)
 }
 
-fn encode_input(path: &str, function: &str, values: &[String], lenient: bool) -> Result<String, Error> {
-	let function = load_function(path, function)?;
+fn encode_input(path: &str, name_or_signature: &str, values: &[String], lenient: bool) -> Result<String, Error> {
+	let function = load_function(path, name_or_signature)?;
 
 	let params: Vec<_> = function.inputs.iter()
 		.map(|param| param.kind.clone())
@@ -172,8 +192,8 @@ fn encode_params(types: &[String], values: &[String], lenient: bool) -> Result<S
 	Ok(result.to_hex())
 }
 
-fn decode_call_output(path: &str, function: &str, data: &str) -> Result<String, Error> {
-	let function = load_function(path, function)?;
+fn decode_call_output(path: &str, name_or_signature: &str, data: &str) -> Result<String, Error> {
+	let function = load_function(path, name_or_signature)?;
 	let data : Vec<u8> = data.from_hex().chain_err(|| "Expected <data> to be hex")?;
 	let tokens = function.decode_output(&data)?;
 	let types = function.outputs;
@@ -270,9 +290,39 @@ mod tests {
 	}
 
 	#[test]
-	fn abi_encode() {
+	fn function_encode_by_name() {
 		let command = "ethabi encode function ../res/test.abi foo -p 1".split(" ");
 		let expected = "455575780000000000000000000000000000000000000000000000000000000000000001";
+		assert_eq!(execute(command).unwrap(), expected);
+	}
+
+	#[test]
+	fn function_encode_by_signature() {
+		let command = "ethabi encode function ../res/test.abi foo(bool) -p 1".split(" ");
+		let expected = "455575780000000000000000000000000000000000000000000000000000000000000001";
+		assert_eq!(execute(command).unwrap(), expected);
+	}
+
+	#[test]
+	fn overloaded_function_encode_by_name() {
+		// This should fail because there are two definitions of `bar in the ABI
+		let command = "ethabi encode function ../res/test.abi bar -p 1".split(" ");
+		assert!(execute(command).is_err());
+	}
+
+	#[test]
+	fn overloaded_function_encode_by_first_signature() {
+		let command = "ethabi encode function ../res/test.abi bar(bool) -p 1".split(" ");
+		let expected = "6fae94120000000000000000000000000000000000000000000000000000000000000001";
+		assert_eq!(execute(command).unwrap(), expected);
+	}
+
+	#[test]
+	fn overloaded_function_encode_by_second_signature() {
+		let command = "ethabi encode function ../res/test.abi bar(string):(uint256) -p 1".split(" ");
+		let expected = "d473a8ed0000000000000000000000000000000000000000000000000000000000000020\
+						000000000000000000000000000000000000000000000000000000000000000131000000\
+						00000000000000000000000000000000000000000000000000000000";
 		assert_eq!(execute(command).unwrap(), expected);
 	}
 
