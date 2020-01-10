@@ -332,14 +332,14 @@ mod tests {
 	#[test]
 	fn decode_dynamic_array_of_dynamic_arrays() {
 		// Encoding explanation:
-		// line 1 at 0x00 =   0: offset of the `dynamic` array data (0x20 = 32 => line 2)
-		// line 2 at 0x20 =  32: length of the `dynamic` array (0x2 = 2)
-		// line 3 at 0x40 =  64: offset of `array0` (0x80 = 128 = 5 * 32 => line 5)
-		// line 4 at 0x60 =  96: offset of `array1` (0xc0 = 192 = 7 * 32 => line 7)
-		// line 5 at 0x80 = 128: length of `array0` (0x1 = 1)
-		// line 6 at 0xa0 = 160: value 1 of `array0` (0x1111111111111111111111111111111111111111)
-		// line 7 at 0xc0 = 192: length of `array1` (0x1 = 1)
-		// line 8 at 0xe0 = 224: value 1 of `array1` (0x2222222222222222222222222222222222222222)
+		// line 1 at 0x00 =   0: tail offset of dynamic array (0x20 = 32 => line 2)
+		// line 2 at 0x20 =  32: length of dynamic array (0x2 = 2)
+		// line 3 at 0x40 =  64: offset of array0 (0x80 = 128 = 5 * 32 => line 5)
+		// line 4 at 0x60 =  96: offset of array1 (0xc0 = 192 = 7 * 32 => line 7)
+		// line 5 at 0x80 = 128: length of array0 (0x1 = 1)
+		// line 6 at 0xa0 = 160: value array0[0] (0x1111111111111111111111111111111111111111)
+		// line 7 at 0xc0 = 192: length of array1 (0x1 = 1)
+		// line 8 at 0xe0 = 224: value array1[0] (0x2222222222222222222222222222222222222222)
 		let encoded  = hex!("
 			0000000000000000000000000000000000000000000000000000000000000020
 			0000000000000000000000000000000000000000000000000000000000000002
@@ -398,13 +398,13 @@ mod tests {
 
 	#[test]
 	fn decode_fixed_array_of_strings() {
-		// line 1: offset 0x00 =   0: tail offset for the array
-		// line 2: offset 0x20 =  32: offset of string 1
-		// line 3: offset 0x40 =  64: offset of string 2
-		// line 4: offset 0x60 =  96: length of string 1
-		// line 5: offset 0x80 = 128: string 1
-		// line 6: offset 0xa0 = 160: length of string 2
-		// line 7: offset 0xc0 = 192: string 2
+		// line 1 at 0x00 =   0: tail offset for the array
+		// line 2 at 0x20 =  32: offset of string 1
+		// line 3 at 0x40 =  64: offset of string 2
+		// line 4 at 0x60 =  96: length of string 1
+		// line 5 at 0x80 = 128: value  of string 1
+		// line 6 at 0xa0 = 160: length of string 2
+		// line 7 at 0xc0 = 192: value  of string 2
 		let encoded = hex!("
 			0000000000000000000000000000000000000000000000000000000000000020
 			0000000000000000000000000000000000000000000000000000000000000040
