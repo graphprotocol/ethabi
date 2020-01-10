@@ -81,15 +81,6 @@ impl fmt::Display for Token {
 }
 
 impl Token {
-	/// Returns whether this token is dynamic
-	pub fn is_dynamic(&self) -> bool {
-		match self {
-			Token::Bytes(_) | Token::String(_) | Token::Array(_) => true,
-			Token::FixedArray(ref tokens) => tokens.iter().any(|ref token| token.is_dynamic()),
-			_ => false
-		}
-	}
-
 	/// Check whether the type of the token matches the given parameter type.
 	///
 	/// Numeric types (`Int` and `Uint`) type check if the size of the token

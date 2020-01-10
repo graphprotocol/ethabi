@@ -38,7 +38,7 @@ enum Mediate {
 	PrefixedArray(Vec<Mediate>),
 	PrefixedArrayWithLength(Vec<Mediate>),
 	RawTuple(Vec<Mediate>),
-	PrefixedTuple(<Vec<Mediate>),
+	PrefixedTuple(Vec<Mediate>),
 }
 
 impl Mediate {
@@ -82,7 +82,9 @@ impl Mediate {
 			Mediate::Raw(_) => vec![],
 			Mediate::Prefixed(ref raw) => raw.clone(),
 			Mediate::PrefixedArray(ref mediates) => encode_head_tail(mediates),
-			Mediate::PrefixedArrayWithLength(ref mediates) | Media::RawTuple(ref mediates) | Mediate::PrefixedTuple(ref mediates) => {
+			Mediate::PrefixedArrayWithLength(ref mediates)
+			| Mediate::RawTuple(ref mediates)
+			| Mediate::PrefixedTuple(ref mediates) => {
 				// + 32 added to offset represents len of the array prepanded to tail
 				let mut result = vec![pad_u32(mediates.len() as u32)];
 

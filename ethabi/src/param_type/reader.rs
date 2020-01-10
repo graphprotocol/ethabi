@@ -10,7 +10,7 @@ impl Reader {
 			// check if it is a struct
 			Some(')') => {
 				if !name.starts_with('(') {
-					return Err(ErrorKind::InvalidName(name.to_owned()).into());
+					return Err(Error::InvalidName(name.to_owned()));
 				};
 
 				let mut subtypes = Vec::new();
