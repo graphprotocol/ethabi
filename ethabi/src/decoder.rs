@@ -152,13 +152,17 @@ fn decode_param(
 			Ok(result)
 		}
 		ParamType::Array(ref t) => {
-			let dynamic_offset = as_usize(&peek_32_bytes(data, offset)?)?;
-			let len = as_usize(&peek_32_bytes(data, dynamic_offset)?)?;
+			let len_offset = as_usize(&peek_32_bytes(data, offset)?)?;
+			let len = as_usize(&peek_32_bytes(data, len_offset)?)?;
+
+			let tail_offset = len_offset + 32;
+			let tail = &data[tail_offset..];
+
 			let mut tokens = vec![];
-			let mut new_offset = dynamic_offset + 32;
+			let mut new_offset = 0;
 
 			for _ in 0..len {
-				let res = decode_param(t, data, new_offset)?;
+				let res = decode_param(t, &tail, new_offset)?;
 				new_offset = res.new_offset;
 				tokens.push(res.token);
 			}
@@ -171,18 +175,25 @@ fn decode_param(
 			Ok(result)
 		}
 		ParamType::FixedArray(ref t, len) => {
+			let is_dynamic = param.is_dynamic();
+
+			let (tail, mut new_offset) = if is_dynamic {
+				(&data[as_usize(&peek_32_bytes(data, offset)?)?..], 0)
+			} else {
+				(data, offset)
+			};
+
 			let mut tokens = vec![];
-			let mut new_offset = offset;
 
 			for _ in 0..len {
-				let res = decode_param(t, data, new_offset)?;
+				let res = decode_param(t, &tail, new_offset)?;
 				new_offset = res.new_offset;
 				tokens.push(res.token);
 			}
 
 			let result = DecodeResult {
 				token: Token::FixedArray(tokens),
-				new_offset,
+				new_offset: if is_dynamic { offset + 32 } else { new_offset },
 			};
 
 			Ok(result)
@@ -192,16 +203,16 @@ fn decode_param(
 
 			// The first element in a dynamic Tuple is an offset to the Tuple's data
 			// For a static Tuple the data begins right away
-			let (slices, mut new_offset) = if is_dynamic {
-				(&data[as_usize(&peek_32_bytes(data, offset)?)?..],0)
+			let (tail, mut new_offset) = if is_dynamic {
+				(&data[as_usize(&peek_32_bytes(data, offset)?)?..], 0)
 			} else {
-				(data,offset)
+				(data, offset)
 			};
 
 			let len = t.len();
 			let mut tokens = Vec::with_capacity(len);
 			for i in 0..len {
-				let res = decode_param(&t[i], &slices, new_offset)?;
+				let res = decode_param(&t[i], &tail, new_offset)?;
 				new_offset = res.new_offset;
 				tokens.push(res.token);
 			}
@@ -320,11 +331,20 @@ mod tests {
 
 	#[test]
 	fn decode_dynamic_array_of_dynamic_arrays() {
+		// Encoding explanation:
+		// line 1 at 0x00 =   0: offset of the `dynamic` array data (0x20 = 32 => line 2)
+		// line 2 at 0x20 =  32: length of the `dynamic` array (0x2 = 2)
+		// line 3 at 0x40 =  64: offset of `array0` (0x80 = 128 = 5 * 32 => line 5)
+		// line 4 at 0x60 =  96: offset of `array1` (0xc0 = 192 = 7 * 32 => line 7)
+		// line 5 at 0x80 = 128: length of `array0` (0x1 = 1)
+		// line 6 at 0xa0 = 160: value 1 of `array0` (0x1111111111111111111111111111111111111111)
+		// line 7 at 0xc0 = 192: length of `array1` (0x1 = 1)
+		// line 8 at 0xe0 = 224: value 1 of `array1` (0x2222222222222222222222222222222222222222)
 		let encoded  = hex!("
 			0000000000000000000000000000000000000000000000000000000000000020
 			0000000000000000000000000000000000000000000000000000000000000002
+			0000000000000000000000000000000000000000000000000000000000000040
 			0000000000000000000000000000000000000000000000000000000000000080
-			00000000000000000000000000000000000000000000000000000000000000c0
 			0000000000000000000000000000000000000000000000000000000000000001
 			0000000000000000000000001111111111111111111111111111111111111111
 			0000000000000000000000000000000000000000000000000000000000000001
@@ -350,8 +370,8 @@ mod tests {
 		let encoded = hex!("
 			0000000000000000000000000000000000000000000000000000000000000020
 			0000000000000000000000000000000000000000000000000000000000000002
-			0000000000000000000000000000000000000000000000000000000000000080
-			00000000000000000000000000000000000000000000000000000000000000e0
+			0000000000000000000000000000000000000000000000000000000000000040
+			00000000000000000000000000000000000000000000000000000000000000a0
 			0000000000000000000000000000000000000000000000000000000000000002
 			0000000000000000000000001111111111111111111111111111111111111111
 			0000000000000000000000002222222222222222222222222222222222222222
@@ -377,7 +397,38 @@ mod tests {
 	}
 
 	#[test]
-	fn decode_fixed_array_fixed_arrays() {
+	fn decode_fixed_array_of_strings() {
+		// line 1: offset 0x00 =   0: tail offset for the array
+		// line 2: offset 0x20 =  32: offset of string 1
+		// line 3: offset 0x40 =  64: offset of string 2
+		// line 4: offset 0x60 =  96: length of string 1
+		// line 5: offset 0x80 = 128: string 1
+		// line 6: offset 0xa0 = 160: length of string 2
+		// line 7: offset 0xc0 = 192: string 2
+		let encoded = hex!("
+			0000000000000000000000000000000000000000000000000000000000000020
+			0000000000000000000000000000000000000000000000000000000000000040
+			0000000000000000000000000000000000000000000000000000000000000080
+			0000000000000000000000000000000000000000000000000000000000000003
+			666f6f0000000000000000000000000000000000000000000000000000000000
+			0000000000000000000000000000000000000000000000000000000000000003
+			6261720000000000000000000000000000000000000000000000000000000000
+		");
+
+		let s1 = Token::String("foo".into());
+		let s2 = Token::String("bar".into());
+		let array = Token::FixedArray(vec![s1, s2]);
+		
+		let expected = vec![array];
+		let decoded = decode(&[
+			ParamType::FixedArray(Box::new(ParamType::String), 2)
+		], &encoded).unwrap();
+
+		assert_eq!(decoded, expected);
+	}
+
+	#[test]
+	fn decode_fixed_array_of_fixed_arrays() {
 		let encoded = hex!("
 			0000000000000000000000001111111111111111111111111111111111111111
 			0000000000000000000000002222222222222222222222222222222222222222
@@ -406,6 +457,7 @@ mod tests {
 	#[test]
 	fn decode_fixed_array_of_dynamic_array_of_addresses() {
 		let encoded = hex!("
+			0000000000000000000000000000000000000000000000000000000000000020
 			0000000000000000000000000000000000000000000000000000000000000040
 			00000000000000000000000000000000000000000000000000000000000000a0
 			0000000000000000000000000000000000000000000000000000000000000002

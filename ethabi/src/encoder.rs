@@ -45,32 +45,33 @@ impl Mediate {
 	fn head_len(&self) -> u32 {
 		match *self {
 			Mediate::Raw(ref raw) => 32 * raw.len() as u32,
+			Mediate::RawTuple(ref mediates) => 32 * mediates.len() as u32,
 			Mediate::Prefixed(_)
 			| Mediate::PrefixedArray(_)
 			| Mediate::PrefixedArrayWithLength(_)
-			| Mediate::RawTuple(_)
 			| Mediate::PrefixedTuple(_) => 32,
 		}
 	}
 
 	fn tail_len(&self) -> u32 {
 		match *self {
-			Mediate::Raw(_) => 0,
+			Mediate::Raw(_) | Mediate::RawTuple(_) => 0,
 			Mediate::Prefixed(ref pre) => pre.len() as u32 * 32,
 			Mediate::PrefixedArray(ref mediates) => mediates.iter().fold(0, |acc, m| acc + m.head_len() + m.tail_len()),
 			Mediate::PrefixedArrayWithLength(ref mediates) => mediates.iter().fold(32, |acc, m| acc + m.head_len() + m.tail_len()),
-            Mediate::RawTuple(ref nes) => nes.iter().fold(32, |acc, m| acc + m.head_len() + m.tail_len()),
-            Mediate::PrefixedTuple(ref nes) => nes.iter().fold(32, |acc, m| acc + m.head_len() + m.tail_len()),
+            Mediate::PrefixedTuple(ref mediates) => mediates.iter().fold(0, |acc, m| acc + m.head_len() + m.tail_len()),
 		}
 	}
 
 	fn head(&self, suffix_offset: u32) -> Vec<Word> {
 		match *self {
 			Mediate::Raw(ref raw) => raw.clone(),
+			Mediate::RawTuple(ref raw) => {
+				raw.iter().map(|mediate| mediate.head(0)).flatten().collect()
+			},
 			Mediate::Prefixed(_)
 			| Mediate::PrefixedArray(_)
 			| Mediate::PrefixedArrayWithLength(_)
-			| Mediate::RawTuple(_)
 			| Mediate::PrefixedTuple(_) => {
 				vec![pad_u32(suffix_offset)]
 			}
@@ -79,12 +80,13 @@ impl Mediate {
 
 	fn tail(&self) -> Vec<Word> {
 		match *self {
-			Mediate::Raw(_) => vec![],
+			Mediate::Raw(_) | Mediate::RawTuple(_) => vec![],
+			Mediate::PrefixedTuple(ref mediates) => {
+				encode_head_tail(mediates)
+			}
 			Mediate::Prefixed(ref raw) => raw.clone(),
 			Mediate::PrefixedArray(ref mediates) => encode_head_tail(mediates),
-			Mediate::PrefixedArrayWithLength(ref mediates)
-			| Mediate::RawTuple(ref mediates)
-			| Mediate::PrefixedTuple(ref mediates) => {
+			Mediate::PrefixedArrayWithLength(ref mediates) => {
 				// + 32 added to offset represents len of the array prepanded to tail
 				let mut result = vec![pad_u32(mediates.len() as u32)];
 
@@ -248,6 +250,7 @@ mod tests {
 		let fixed = Token::FixedArray(vec![array0, array1]);
 		let encoded = encode(&vec![fixed]);
 		let expected = hex!("
+			0000000000000000000000000000000000000000000000000000000000000020
 			0000000000000000000000000000000000000000000000000000000000000040
 			00000000000000000000000000000000000000000000000000000000000000a0
 			0000000000000000000000000000000000000000000000000000000000000002
