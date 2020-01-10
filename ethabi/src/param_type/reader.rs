@@ -113,12 +113,12 @@ impl Reader {
 				let count = name.chars().count();
 				if num.is_empty() {
 					// we already know it's a dynamic array!
-					let subtype = try!(Reader::read(&name[..count - 2]));
+					let subtype = Reader::read(&name[..count - 2])?;
 					return Ok(ParamType::Array(Box::new(subtype)));
 				} else {
 					// it's a fixed array.
-					let len = try!(usize::from_str_radix(&num, 10));
-					let subtype = try!(Reader::read(&name[..count - num.len() - 2]));
+					let len = usize::from_str_radix(&num, 10)?;
+					let subtype = Reader::read(&name[..count - num.len() - 2])?;
 					return Ok(ParamType::FixedArray(Box::new(subtype), len));
 				}
 			}
