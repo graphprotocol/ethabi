@@ -37,7 +37,7 @@ pub trait Tokenizer {
 		param: &ParamType,
 		len: usize,
 	) -> Result<Vec<Token>, Error> {
-		let result = try!(Self::tokenize_array(value, param));
+		let result = Self::tokenize_array(value, param)?;
 		match result.len() == len {
 			true => Ok(result),
 			false => Err(Error::InvalidData),
