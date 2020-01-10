@@ -148,13 +148,17 @@ fn decode_param(param: &ParamType, data: &[u8], offset: usize) -> Result<DecodeR
 			Ok(result)
 		}
 		ParamType::Array(ref t) => {
-			let dynamic_offset = as_usize(&peek_32_bytes(data, offset)?)?;
-			let len = as_usize(&peek_32_bytes(data, dynamic_offset)?)?;
+			let len_offset = as_usize(&peek_32_bytes(data, offset)?)?;
+			let len = as_usize(&peek_32_bytes(data, len_offset)?)?;
+
+			let tail_offset = len_offset + 32;
+			let tail = &data[tail_offset..];
+
 			let mut tokens = vec![];
-			let mut new_offset = dynamic_offset + 32;
+			let mut new_offset = 0;
 
 			for _ in 0..len {
-				let res = decode_param(t, data, new_offset)?;
+				let res = decode_param(t, &tail, new_offset)?;
 				new_offset = res.new_offset;
 				tokens.push(res.token);
 			}
@@ -167,18 +171,25 @@ fn decode_param(param: &ParamType, data: &[u8], offset: usize) -> Result<DecodeR
 			Ok(result)
 		}
 		ParamType::FixedArray(ref t, len) => {
+			let is_dynamic = param.is_dynamic();
+
+			let (tail, mut new_offset) = if is_dynamic {
+				(&data[as_usize(&peek_32_bytes(data, offset)?)?..], 0)
+			} else {
+				(data, offset)
+			};
+
 			let mut tokens = vec![];
-			let mut new_offset = offset;
 
 			for _ in 0..len {
-				let res = decode_param(t, data, new_offset)?;
+				let res = decode_param(t, &tail, new_offset)?;
 				new_offset = res.new_offset;
 				tokens.push(res.token);
 			}
 
 			let result = DecodeResult {
 				token: Token::FixedArray(tokens),
-				new_offset,
+				new_offset: if is_dynamic { offset + 32 } else { new_offset },
 			};
 
 			Ok(result)
@@ -189,8 +200,7 @@ fn decode_param(param: &ParamType, data: &[u8], offset: usize) -> Result<DecodeR
 			// The first element in a dynamic Tuple is an offset to the Tuple's data
 			// For a static Tuple the data begins right away
 			let (tail, mut new_offset) = if is_dynamic {
-				let tail_offset = as_usize(&peek_32_bytes(data, offset)?)?;
-				(&data[tail_offset..], 0)
+				(&data[as_usize(&peek_32_bytes(data, offset)?)?..], 0)
 			} else {
 				(data, offset)
 			};
@@ -440,6 +450,37 @@ mod tests {
 			ParamType::Address,
 			ParamType::Address,
 		], &encoded).unwrap();
+		assert_eq!(decoded, expected);
+	}
+
+	#[test]
+	fn decode_fixed_array_of_strings() {
+		// line 1 at 0x00 =   0: tail offset for the array
+		// line 2 at 0x20 =  32: offset of string 1
+		// line 3 at 0x40 =  64: offset of string 2
+		// line 4 at 0x60 =  96: length of string 1
+		// line 5 at 0x80 = 128: value  of string 1
+		// line 6 at 0xa0 = 160: length of string 2
+		// line 7 at 0xc0 = 192: value  of string 2
+		let encoded = hex!("
+			0000000000000000000000000000000000000000000000000000000000000020
+			0000000000000000000000000000000000000000000000000000000000000040
+			0000000000000000000000000000000000000000000000000000000000000080
+			0000000000000000000000000000000000000000000000000000000000000003
+			666f6f0000000000000000000000000000000000000000000000000000000000
+			0000000000000000000000000000000000000000000000000000000000000003
+			6261720000000000000000000000000000000000000000000000000000000000
+		");
+
+		let s1 = Token::String("foo".into());
+		let s2 = Token::String("bar".into());
+		let array = Token::FixedArray(vec![s1, s2]);
+		
+		let expected = vec![array];
+		let decoded = decode(&[
+			ParamType::FixedArray(Box::new(ParamType::String), 2)
+		], &encoded).unwrap();
+
 		assert_eq!(decoded, expected);
 	}
 
