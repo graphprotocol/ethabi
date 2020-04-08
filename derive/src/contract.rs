@@ -81,6 +81,7 @@ mod test {
 			constructor: None,
 			functions: Default::default(),
 			events: Default::default(),
+			receive: false,
 			fallback: false,
 		};
 
