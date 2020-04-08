@@ -25,6 +25,8 @@ pub struct Contract {
 	pub functions: HashMap<String, Vec<Function>>,
 	/// Contract events, maps signature to event.
 	pub events: HashMap<String, Vec<Event>>,
+	/// Contract has receive function.
+	pub receive: bool,
 	/// Contract has fallback function.
 	pub fallback: bool,
 }
@@ -49,6 +51,7 @@ impl<'a> Visitor<'a> for ContractVisitor {
 			constructor: None,
 			functions: HashMap::default(),
 			events: HashMap::default(),
+			receive: true,
 			fallback: false,
 		};
 
@@ -65,6 +68,9 @@ impl<'a> Visitor<'a> for ContractVisitor {
 				},
 				Operation::Fallback => {
 					result.fallback = true;
+				},
+				Operation::Receive => {
+					result.receive = true;
 				},
 			}
 		}
@@ -124,11 +130,6 @@ impl Contract {
 	/// Iterate over all events of the contract in arbitrary order.
 	pub fn events(&self) -> Events {
 		Events(self.events.values().flatten())
-	}
-
-	/// Returns true if contract has fallback
-	pub fn fallback(&self) -> bool {
-		self.fallback
 	}
 }
 
